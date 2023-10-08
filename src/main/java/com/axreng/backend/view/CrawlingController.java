@@ -4,20 +4,24 @@ import com.axreng.backend.domain.model.BadKeywordException;
 import com.axreng.backend.domain.model.KeywordNotCrawledException;
 import com.axreng.backend.domain.model.dto.CrawlingRequest;
 import com.axreng.backend.domain.model.dto.ErrorResponse;
+import com.axreng.backend.domain.service.CrawlingHost;
 import com.axreng.backend.domain.service.CrawlingService;
+import com.axreng.backend.domain.service.CrawlingVisitor;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
+
+import java.net.MalformedURLException;
 
 import static spark.Spark.*;
 import static spark.Spark.exception;
 
-public class CrawlingController {
+public class CrawlingController implements CrawlingHost {
 
     private String BASE_URL;
 
     private CrawlingService crawlingService;
 
-    public CrawlingController(String baseURL) {
+    public CrawlingController(String baseURL) throws MalformedURLException {
         this.BASE_URL = baseURL;
         this.crawlingService = new CrawlingService(BASE_URL);
         initiateRoutes();
@@ -63,4 +67,8 @@ public class CrawlingController {
         });
     }
 
+    @Override
+    public void accept(CrawlingVisitor visitor) {
+        visitor.visit(this.crawlingService);
+    }
 }

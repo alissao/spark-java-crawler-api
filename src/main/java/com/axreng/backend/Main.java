@@ -1,7 +1,10 @@
 package com.axreng.backend;
 
+import com.axreng.backend.domain.service.CrawlingScheduler;
 import com.axreng.backend.view.CrawlingController;
 import org.eclipse.jetty.util.log.Log;
+
+import java.net.MalformedURLException;
 
 public class Main {
     public static void main(String[] args) {
@@ -13,6 +16,15 @@ public class Main {
         }
 
         log.info("Crawling on URL: " + BASE_URL);
-        CrawlingController crawlingController = new CrawlingController(BASE_URL);
+        try {
+            CrawlingScheduler scheduler = new CrawlingScheduler();
+            CrawlingController crawlingController = new CrawlingController(BASE_URL);
+
+            //IoC
+            crawlingController.accept(scheduler);
+        } catch (MalformedURLException urlEx) {
+            log.warn("Couldn't parse BASE_URL. Shutting Down.");
+            System.exit(100);
+        }
     }
 }
