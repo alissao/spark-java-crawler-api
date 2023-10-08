@@ -33,14 +33,23 @@ public class CrawlingController implements CrawlingHost {
     }
 
     private void crawlingRoutes() {
-        get("/crawl/:id", (req, res) ->
-                "GET /crawl/" + req.params("id")
-        );
+        get("/crawl/:id", (req, res) -> {
+            res.type("application/json");
+            res.status(200);
+            res
+                .body(
+                    new Gson()
+                            .toJsonTree(crawlingService.findSearchById(req.params("id"))
+                            ).toString()
+                );
+            return res.body();
+        });
 
         post("/crawl", (req, res) -> {
             CrawlingRequest crawlReq = new Gson().fromJson(req.body(), CrawlingRequest.class);
-            crawlingService.crawlForKeyword(crawlReq, res);
-            return res;
+            crawlingService.enqueueKeyword(crawlReq, res);
+            res.type("application/json");
+            return res.body();
         });
     }
 

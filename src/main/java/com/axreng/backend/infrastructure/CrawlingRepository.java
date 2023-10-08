@@ -11,7 +11,7 @@ public class CrawlingRepository {
     private final ConcurrentHashMap<String, SearchResponse> searchRepository = new ConcurrentHashMap<>();
 
     public SearchResponse saveSearch(SearchResponse search) {
-        boolean searchAlreadyStored = search.getId() == null;
+        boolean searchAlreadyStored = search.getId() != null;
         String searchId = "";
         if (searchAlreadyStored) {
             searchId = search.getId();

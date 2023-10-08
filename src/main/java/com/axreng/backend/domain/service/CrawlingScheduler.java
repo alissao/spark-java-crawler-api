@@ -23,12 +23,13 @@ public class CrawlingScheduler extends TimerTask implements CrawlingVisitor {
 
     @Override
     public void run() {
-        if (runningScheduler == false) {
-            log.info("Checking if there's Job to do. Queue size: "
+        if (runningScheduler == false && crawlingService.getQueueSize() > 0) {
+            log.info("Crawling from queue. Queue size: "
                     + crawlingService.getQueueSize()
                     + ". Running another search? "
                     + runningScheduler
             );
+            crawlingService.crawlFromQueue();
         }
     }
 

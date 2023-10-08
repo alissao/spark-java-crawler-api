@@ -1,12 +1,18 @@
 package com.axreng.backend.domain.service;
 
 import com.axreng.backend.domain.model.BadKeywordException;
+import com.axreng.backend.domain.model.KeywordNotCrawledException;
+import com.axreng.backend.domain.model.Search;
 import com.axreng.backend.domain.model.dto.*;
 import com.axreng.backend.infrastructure.CrawlingRepository;
+import com.google.gson.Gson;
+import org.eclipse.jetty.util.log.Log;
+import org.eclipse.jetty.util.log.Logger;
 import spark.Response;
 
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.regex.Pattern;
@@ -15,9 +21,11 @@ public class CrawlingService implements CrawlingHost {
 
     private final String BASE_URL;
 
+    private Logger log = Log.getLogger(CrawlingService.class);
+
     private URL baseUrl;
 
-    private Queue<CrawlingRequest> crawlingQueue;
+    private Queue<Search> crawlingQueue;
 
     private final CrawlingRepository crawlingRepository;
 
@@ -32,13 +40,48 @@ public class CrawlingService implements CrawlingHost {
         this.baseUrl = new URL(BASE_URL);
     }
 
-    public void crawlForKeyword(CrawlingRequest crawlDto, Response resp) {
+    public void enqueueKeyword(CrawlingRequest crawlDto, Response resp) {
         if (crawlDto.getKeyword().length() < 4 || crawlDto.getKeyword().length() > 32) {
             throw new BadKeywordException();
         }
 
-        Pattern anchorPattern = getAnchorPattern();
-        //Matcher matcher = anchorPattern.matcher();
+        SearchResponse newResponse = new SearchResponse();
+        newResponse.setStatus(SearchStatus.ACTIVE);
+        newResponse.setUrls(new ArrayList<>());
+
+        newResponse = crawlingRepository.saveSearch(newResponse);
+
+        Search search = new Search(newResponse.getId(), crawlDto.getKeyword());
+
+        var enqueuedWithSuccess = crawlingQueue.add(search);
+
+        if (enqueuedWithSuccess) {
+            resp.status(200);
+            resp.body(new Gson().toJson(new CrawlingResponse(search.getSearchId())).toString());
+        } else {
+            resp.status(500);
+            resp.body(
+                    new Gson()
+                            .toJson(
+                                    new ErrorResponse(
+                                            "Error putting search on the queue. " +
+                                                    "Try again in a few seconds."
+                                    )
+                            )
+            );
+        }
+    }
+
+    protected void crawlFromQueue() {
+        if (crawlingQueue.size() > 0) {
+            var crawlerSearch = crawlingQueue.remove();
+
+            log.info("CrawlerSearch: ID = " + crawlerSearch.getSearchId());
+            log.info("CrawlerSearch: Keyword = " + crawlerSearch.getKeyword());
+
+            Pattern anchorPattern = getAnchorPattern();
+            //Matcher matcher = anchorPattern.matcher();
+        }
     }
 
     private Pattern getAnchorPattern() {
@@ -62,8 +105,17 @@ public class CrawlingService implements CrawlingHost {
                 .replace("/", "\\/");
     }
 
-    public int getQueueSize() {
+    protected int getQueueSize() {
         return this.crawlingQueue.size();
+    }
+
+    public SearchResponse findSearchById(final String id) {
+        var result = this.crawlingRepository.findById(id);
+        if (result.isPresent()) {
+            return result.get();
+        } else {
+            throw new KeywordNotCrawledException();
+        }
     }
 
     @Override
