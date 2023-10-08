@@ -1,9 +1,7 @@
 package com.axreng.backend;
 
+import com.axreng.backend.view.CrawlingController;
 import org.eclipse.jetty.util.log.Log;
-import org.slf4j.LoggerFactory;
-
-import static spark.Spark.*;
 
 public class Main {
     public static void main(String[] args) {
@@ -15,11 +13,6 @@ public class Main {
         }
 
         log.info("Crawling on URL: " + BASE_URL);
-
-        get("/crawl/:id", (req, res) ->
-                "GET /crawl/" + req.params("id"));
-        post("/crawl", (req, res) -> {
-            return "POST /crawl" + System.lineSeparator() + req.body();
-        });
+        CrawlingController crawlingController = new CrawlingController(BASE_URL);
     }
 }
