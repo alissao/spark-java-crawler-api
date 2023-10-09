@@ -1,9 +1,8 @@
 package com.axreng.backend.domain.model.dto;
 
 import java.io.Serializable;
-import java.net.URL;
 import java.util.List;
-import java.util.UUID;
+import java.util.Set;
 
 public class SearchResponse implements Serializable {
 
@@ -11,7 +10,7 @@ public class SearchResponse implements Serializable {
 
     private SearchStatus status;
 
-    private List<URL> urls;
+    private Set<String> urls;
 
     public String getId() {
         return id;
@@ -29,11 +28,11 @@ public class SearchResponse implements Serializable {
         this.status = status;
     }
 
-    public List<URL> getUrls() {
+    public Set<String> getUrls() {
         return urls;
     }
 
-    public void setUrls(List<URL> urls) {
+    public void setUrls(Set<String> urls) {
         this.urls = urls;
     }
 }

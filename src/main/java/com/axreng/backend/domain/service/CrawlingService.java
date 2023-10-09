@@ -10,11 +10,12 @@ import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Logger;
 import spark.Response;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.Queue;
+import java.util.*;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class CrawlingService implements CrawlingHost {
@@ -25,6 +26,8 @@ public class CrawlingService implements CrawlingHost {
 
     private URL baseUrl;
 
+    private Pattern dotHtmlPattern;
+
     private Queue<Search> crawlingQueue;
 
     private final CrawlingRepository crawlingRepository;
@@ -33,6 +36,8 @@ public class CrawlingService implements CrawlingHost {
         this.BASE_URL = baseUrl;
         this.crawlingQueue = new LinkedList<>();
         this.crawlingRepository = new CrawlingRepository();
+        this.dotHtmlPattern = Pattern
+                .compile("<a\\s+[^>]*href=\"(.*?\\.html)\"[^>]*>([^<]*)</a>");
         checksUrl();
     }
 
@@ -47,7 +52,7 @@ public class CrawlingService implements CrawlingHost {
 
         SearchResponse newResponse = new SearchResponse();
         newResponse.setStatus(SearchStatus.ACTIVE);
-        newResponse.setUrls(new ArrayList<>());
+        newResponse.setUrls(new HashSet<>());
 
         newResponse = crawlingRepository.saveSearch(newResponse);
 
@@ -76,18 +81,109 @@ public class CrawlingService implements CrawlingHost {
         if (crawlingQueue.size() > 0) {
             var crawlerSearch = crawlingQueue.remove();
 
-            log.info("CrawlerSearch: ID = " + crawlerSearch.getSearchId());
-            log.info("CrawlerSearch: Keyword = " + crawlerSearch.getKeyword());
+            final Queue<URL> urlsWithSameBase = new LinkedList<>();
+            urlsWithSameBase.add(baseUrl); //starting point
 
-            Pattern anchorPattern = getAnchorPattern();
-            //Matcher matcher = anchorPattern.matcher();
+            final Set<URL> visitedUrls = new HashSet<>();
+
+            log.info("Initiating Thread based crawling for ID = " + crawlerSearch.getSearchId());
+
+            final Pattern anchorPattern = getAnchorPattern();
+
+            while (!urlsWithSameBase.isEmpty()) {
+                crawlOnNextUrl(urlsWithSameBase, anchorPattern, visitedUrls, crawlerSearch);
+            }
+
+            SearchResponse result = crawlingRepository.findById(crawlerSearch.getSearchId()).get();
+            result.setStatus(SearchStatus.FINISHED);
+            crawlingRepository.saveSearch(result);
+
+        }
+    }
+
+    private void crawlOnNextUrl(Queue<URL> urlsWithSameBase, final Pattern anchorPattern, Set<URL> visitedUrls, Search crawlerSearch) {
+        final URL urlToCrawl = urlsWithSameBase.remove();
+        if (!visitedUrls.contains(urlToCrawl)) {
+            StringBuilder rawHTMLsb = new StringBuilder();
+
+            var searchResult = crawlingRepository.findById(crawlerSearch.getSearchId()).get();
+            final Set<String> resultList = searchResult.getUrls();
+
+            try {
+                log.info("Getting HTML from URL " + urlToCrawl);
+                BufferedReader in = new BufferedReader(new InputStreamReader(urlToCrawl.openStream()));
+                String inputLine = in.readLine();
+
+                while(inputLine  != null){
+                    rawHTMLsb.append(inputLine);
+
+                    inputLine = in.readLine();
+                }
+                in.close();
+
+                visitedUrls.add(urlToCrawl);
+
+                String rawHtml = rawHTMLsb.toString();
+
+                log.info("Searching for Keyword = " + crawlerSearch.getKeyword() + ". In URL: " + urlToCrawl);
+                Pattern keywordPattern = Pattern.compile("(?i)" + crawlerSearch.getKeyword());
+                Matcher keywordMatcher = keywordPattern.matcher(rawHtml);
+                if (keywordMatcher.find()) {
+                    log.info("Found keyword in URL: " + urlToCrawl + "Saving URL.");
+                    resultList.add(urlToCrawl.toString());
+                    crawlingRepository.saveSearch(searchResult);
+                }
+
+                Matcher matcher = anchorPattern.matcher(rawHtml);
+
+                processAllRegexMatches(matcher, urlsWithSameBase, visitedUrls);
+
+                matcher = dotHtmlPattern.matcher(rawHtml);
+
+                processAllRegexMatches(matcher, urlsWithSameBase, visitedUrls);
+
+            } catch(Exception ex) {
+                log.warn("Error searching URL: " + urlToCrawl.toString());
+            } finally {
+                log.info("Finished crawling on URL: " + urlToCrawl);
+            }
+        }
+    }
+
+    private void processAllRegexMatches(Matcher matcher, Queue<URL> urlsWithSameBase, Set<URL> visitedUrls) throws MalformedURLException {
+        log.info("Initiating Regex Search for anchor elements.");
+        while (matcher.find()) {
+            String anchorEl = matcher.group();
+
+            log.info("Anchor element found: " + anchorEl);
+
+            String extractedUrl = anchorEl.split("href=\"")[1];
+            int indexOfClosingQuote = extractedUrl.indexOf("\"");
+            extractedUrl = extractedUrl.substring(0, indexOfClosingQuote);
+
+            log.info("Extracted URL from Anchor: " + extractedUrl);
+
+            if (!extractedUrl.contains("..")) {
+                if (extractedUrl.endsWith(".html")) {
+                    extractedUrl = BASE_URL + extractedUrl;
+                }
+
+                URL newUrl = new URL(extractedUrl);
+
+                if (newUrl.getHost().equals(baseUrl.getHost())
+                        && !visitedUrls.contains(newUrl)) {
+                    urlsWithSameBase.add(newUrl);
+                }
+            }
+
         }
     }
 
     private Pattern getAnchorPattern() {
-        StringBuilder anchorPattern = new StringBuilder("<a\\s+[^>]*?href=\"(?:http://)?")
+        StringBuilder anchorPattern = new StringBuilder("<a\\s+[^>]*?href=\\\"(?:http:\\/\\/|https:\\/\\/)?")
                 .append(getRegexReadyBaseUrl()) //Model for the regex: "www\.google\.com\/"
-                .append("(.\\/|\\??).*?\".*?>.*?</a>");
+                .append("(.\\/|\\??).*?\\\".*?>.*?<\\/a>");
+        log.info("Anchor Pattern: " + anchorPattern);
         return Pattern.compile(anchorPattern.toString());
     }
 
